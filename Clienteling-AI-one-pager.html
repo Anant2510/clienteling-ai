@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clienteling AI · Agentic Commerce</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400;9..144,500;9..144,700;9..144,900&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f8f5ed; --panel: #fff; --panel2: #f2ede1; --hair: #e0d9c4;
+    --text: #1a1812; --text2: #514c40; --text3: #8d8678;
+    --blue: #1946c8; --navy: #002868; --red: #c8102e; --green: #15803d; --cyan: #0891b2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body { font-family: "DM Sans", system-ui, sans-serif; font-size: 10.5px; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 28px 36px 24px; position: relative; }
+  .page::before { content:""; position:absolute; inset:0; background: radial-gradient(ellipse 600px 200px at 15% 0%, rgba(25,70,200,0.10), transparent 60%), radial-gradient(ellipse 500px 200px at 85% 0%, rgba(200,16,46,0.06), transparent 60%); pointer-events:none; z-index:0; }
+  .page > * { position: relative; z-index: 1; }
+  .top { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid var(--hair); }
+  .brand { font-family:"Fraunces",serif; font-weight:900; font-size:17px; letter-spacing:-0.01em; }
+  .brand .accent { color: var(--red); font-style:italic; font-weight:400; }
+  .doc-meta { font-family:"JetBrains Mono",monospace; font-size:9px; color:var(--text3); text-align:right; line-height:1.55; }
+  .doc-meta .live { display:inline-flex; align-items:center; gap:5px; color:var(--green); font-weight:700; }
+  .doc-meta .live::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 0 2px rgba(21,128,61,0.2); }
+  h1 { font-family:"Fraunces",serif; font-weight:400; font-size:38px; line-height:1; letter-spacing:-0.025em; margin:0 0 10px; }
+  h1 em { font-style:italic; color:var(--blue); }
+  .tagline { font-family:"Fraunces",serif; font-style:italic; font-size:13px; color:var(--text2); max-width:680px; line-height:1.35; }
+  .title-block { margin-bottom:18px; }
+  .tracks { display:grid; grid-template-columns:1fr 1fr 1.6fr; grid-template-rows:auto auto; gap:10px; margin-bottom:16px; }
+  .track { background:var(--panel); border:1px solid var(--hair); border-radius:8px; padding:11px 13px 12px; position:relative; overflow:hidden; }
+  .track .num { font-family:"JetBrains Mono",monospace; font-size:8px; font-weight:700; letter-spacing:0.18em; color:var(--text3); margin-bottom:5px; text-transform:uppercase; }
+  .track h3 { font-family:"Fraunces",serif; font-weight:700; font-size:14px; line-height:1.1; margin:0 0 7px; }
+  .track h3 em { font-style:italic; font-weight:400; color:var(--blue); }
+  .track ul { list-style:none; padding:0; margin:0; font-size:10px; line-height:1.42; color:var(--text2); }
+  .track li { padding-left:11px; margin-bottom:3.5px; position:relative; }
+  .track li::before { content:"›"; position:absolute; left:0; top:-1px; color:var(--text3); font-weight:700; }
+  .track li strong { color:var(--text); font-weight:700; }
+  .track.headline { grid-row:1 / span 2; background:linear-gradient(150deg, rgba(25,70,200,0.10), rgba(200,16,46,0.04) 60%, var(--panel)); border-color:rgba(25,70,200,0.35); }
+  .track.headline::before { content:""; position:absolute; left:0; top:0; bottom:0; width:2px; background:linear-gradient(180deg,var(--navy),var(--blue),var(--red)); }
+  .track.headline .num { color:var(--blue); }
+  .track.headline .pill { display:inline-block; margin-left:8px; padding:1px 7px 2px; background:var(--blue); color:#fff; font-family:"JetBrains Mono",monospace; font-size:7.5px; font-weight:700; letter-spacing:0.1em; border-radius:999px; vertical-align:middle; }
+  .track.headline h3 { font-size:16px; }
+  .flow-wrap { background:var(--panel2); border:1px solid var(--hair); border-radius:8px; padding:12px 14px 14px; margin-bottom:14px; }
+  .flow-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px dashed var(--hair); }
+  .flow-head .label { font-family:"JetBrains Mono",monospace; font-size:9px; font-weight:700; letter-spacing:0.18em; color:var(--text3); text-transform:uppercase; }
+  .flow-head .duration { font-family:"JetBrains Mono",monospace; font-size:9px; color:var(--green); font-weight:700; }
+  .flow-head h2 { font-family:"Fraunces",serif; font-weight:700; font-size:15px; margin:2px 0 0; flex:1; padding-left:14px; }
+  .flow { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; }
+  .step { padding:8px 9px 9px; background:var(--panel); border:1px solid var(--hair); border-radius:6px; font-size:9.5px; line-height:1.4; color:var(--text2); position:relative; }
+  .step .n { font-family:"JetBrains Mono",monospace; font-size:9px; font-weight:700; color:var(--blue); }
+  .step .t { font-family:"JetBrains Mono",monospace; font-size:8px; color:var(--text3); float:right; }
+  .step .title { color:var(--text); font-weight:700; font-size:10px; margin:3px 0; line-height:1.2; }
+  .step.finale { border-color:rgba(21,128,61,0.4); background:linear-gradient(135deg, rgba(21,128,61,0.10), transparent 70%); }
+  .step.finale .n { color:var(--green); }
+  .bottom { display:grid; grid-template-columns:1.5fr 1fr; gap:10px; }
+  .qa, .stack { background:var(--panel); border:1px solid var(--hair); border-radius:8px; padding:11px 14px 12px; }
+  .qa h4, .stack h4 { font-family:"JetBrains Mono",monospace; font-size:9px; font-weight:700; letter-spacing:0.18em; color:var(--text3); text-transform:uppercase; margin:0 0 7px; }
+  .qa-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; }
+  .qa-grid div { font-size:9.5px; line-height:1.38; color:var(--text2); padding-left:10px; position:relative; }
+  .qa-grid div::before { content:"Q"; position:absolute; left:0; font-family:"JetBrains Mono",monospace; font-size:7.5px; color:var(--blue); font-weight:700; top:1px; }
+  .qa-grid div b { color:var(--text); font-style:italic; font-family:"Fraunces",serif; font-weight:500; font-size:10px; display:block; margin-bottom:1px; }
+  .stack p { margin:0 0 5px; font-size:9.5px; color:var(--text2); }
+  .stack .k { font-family:"JetBrains Mono",monospace; font-size:8.5px; color:var(--text3); text-transform:uppercase; letter-spacing:0.1em; margin-right:6px; }
+  .stack .v { color:var(--text); }
+  @page { size:letter; margin:0.3in 0.35in; }
+  @media print { html, body { background:var(--bg)!important; } .page { padding:0; max-width:none; } .track,.qa,.stack,.flow-wrap,.step { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top">
+    <div class="brand">Clienteling <span class="accent">AI</span><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-left:8px;letter-spacing:0.12em;">· AGENTIC COMMERCE</span></div>
+    <div class="doc-meta"><span class="live">LIVE · SHOPIFY-NATIVE · MODEL-AGNOSTIC</span><br/>v1.0 · SOLUTION OVERVIEW</div>
+  </div>
+
+  <div class="title-block">
+    <h1>Autonomous personalization, <em>end to end.</em></h1>
+    <div class="tagline">Not a chatbot bolted onto a storefront. A live agent that reads real customer context — orders, addresses, inventory, store locations — and acts across browse, cart, fulfillment and post-purchase. It drives the page, not just the conversation.</div>
+  </div>
+
+  <div class="tracks">
+    <div class="track">
+      <div class="num">Track 01 · Browse</div>
+      <h3>Persona-aware <em>discovery</em></h3>
+      <ul>
+        <li>Same catalog, a different ordering per shopper — premium-led, value-led, or deal-led.</li>
+        <li><strong>Product-page module</strong> swaps per customer; merchandiser-overridable from an AI console.</li>
+        <li>Hero, copy and assistant tone re-curate live on identity switch.</li>
+        <li>Assistant cites <strong>real past purchases by name</strong> — grounded, not hallucinated.</li>
+      </ul>
+    </div>
+    <div class="track">
+      <div class="num">Track 02 · Cart</div>
+      <h3>Fulfillment-aware <em>UI</em></h3>
+      <ul>
+        <li><strong>Delivery promise</strong> from the shopper's stored ZIP → nearest store → live inventory.</li>
+        <li>Add-to-cart flips to <strong>"In cart · Remove"</strong> when an item is present.</li>
+        <li><strong>Per-identity cart persistence</strong> survives switching and email round-trips.</li>
+        <li>The assistant drives the page: search, filter, add, remove, checkout — from one prompt.</li>
+      </ul>
+    </div>
+    <div class="track headline">
+      <div class="num">Track 03 · Autonomous lifecycle <span class="pill">HEADLINE</span></div>
+      <h3>An agent that <em>works without you.</em></h3>
+      <ul>
+        <li><strong>In-session agent</strong> watches the cart, detects hesitation, escalates in stages.</li>
+        <li><strong>Server-side cron agent</strong> continues the journey <strong>even after the tab is closed</strong> — reading the same shared state.</li>
+        <li>Stage 1: an AI-drafted nudge in the customer's voice. Stage 2: an incentive with a one-click accept link.</li>
+        <li>Click the link → state updates → the offer is <strong>already applied</strong> the instant they return to the cart. No reload.</li>
+        <li>A demo time-warp lever compresses hours into seconds so the full lifecycle plays on stage in under two minutes.</li>
+      </ul>
+    </div>
+    <div class="track">
+      <div class="num">Track 04 · Disruption</div>
+      <h3>Decision-tree <em>recovery</em></h3>
+      <ul>
+        <li>Configurable delay per order; the agent picks the remedy from live inventory + address:</li>
+        <li><strong>Short delay</strong> → email offers <strong>in-store pickup</strong>: nearest store, address, hours.</li>
+        <li><strong>Long delay</strong> → AI-drafted <strong>alternate product</strong> with an accept-CTA. One click cancels the original and reorders — the agent restructures the order for the customer.</li>
+        <li><strong>Out of stock</strong> → email presents <strong>both</strong>: pick up locally OR ship an alternate.</li>
+      </ul>
+    </div>
+    <div class="track">
+      <div class="num">Track 05 · Closed loop</div>
+      <h3>Every action <em>enriches the next.</em></h3>
+      <ul>
+        <li>Orders placed in-app <strong>write back to the commerce platform</strong> via its Admin API.</li>
+        <li><strong>Inventory decrements</strong>; delivery promises reflect the new stock.</li>
+        <li>Order history grows; the assistant's <em>next</em> reply references the just-placed order.</li>
+        <li><strong>Self-signup</strong> creates a real customer in real time — personalization begins on the first click.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="flow-wrap">
+    <div class="flow-head">
+      <div><div class="label">Suggested run</div><h2>The 8-beat demo</h2></div>
+      <div class="duration">≈ 8 min · static → autonomous</div>
+    </div>
+    <div class="flow">
+      <div class="step"><span class="n">01</span><span class="t">~60s</span><div class="title">Sign in as a returning shopper</div>Assistant greets by name with real order count + most recent purchase.</div>
+      <div class="step"><span class="n">02</span><span class="t">~30s</span><div class="title">Switch identity</div>Hero, category sort, assistant tone all re-curate. Switch back — they remember.</div>
+      <div class="step"><span class="n">03</span><span class="t">~30s</span><div class="title">Open a product page</div>"In stock at your nearest store · ships tomorrow" — from the shopper's stored ZIP.</div>
+      <div class="step"><span class="n">04</span><span class="t">~60s</span><div class="title">Add to cart via chat</div>The assistant navigates, shows options, adds. Agent-driven UI in action.</div>
+      <div class="step"><span class="n">05</span><span class="t">~45s</span><div class="title">Place the order</div>Order appears in the real commerce backend. <strong>The loop closes.</strong></div>
+      <div class="step"><span class="n">06</span><span class="t">~60s</span><div class="title">Short delay → pickup</div>Email offers nearest-store pickup with address + hours, from live inventory.</div>
+      <div class="step"><span class="n">07</span><span class="t">~90s</span><div class="title">Long delay → swap</div>Email offers an alternate; accept → backend cancels + reorders. <strong>Agent acts.</strong></div>
+      <div class="step finale"><span class="n">08</span><span class="t">~90s · finale</span><div class="title">Autonomous finale</div>Set the lever, add, walk away. Nudge → incentive email → click → return → <strong>offer already applied.</strong></div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="qa">
+      <h4>Common questions</h4>
+      <div class="qa-grid">
+        <div><b>Which commerce platforms?</b>Adapter-based. The demo runs Shopify-native (Storefront + Admin APIs); the same interface maps to other platforms.</div>
+        <div><b>Which AI model?</b>Model-agnostic via a secure proxy — no model keys ever reach the browser. Swap providers without touching the storefront.</div>
+        <div><b>Does it act, or just chat?</b>It acts: drives the page, places orders, cancels + reorders on disruption, applies incentives — all through real APIs.</div>
+        <div><b>How does it work after the tab closes?</b>An in-session agent syncs cart state to a shared store; a server-side cron agent continues the lifecycle independently.</div>
+        <div><b>Is personalization real-time?</b>Yes — identity switches and new signups re-curate the whole storefront immediately from the live customer record.</div>
+        <div><b>Production-readiness?</b>The demo uses time-compression and sandbox email for stage clarity; production swaps in real cadences, a verified sending domain, and signed links.</div>
+      </div>
+    </div>
+    <div class="stack">
+      <h4>Stack at a glance</h4>
+      <p><span class="k">Storefront</span><span class="v">React + Vite</span></p>
+      <p><span class="k">Commerce</span><span class="v">Shopify Storefront + Admin (adapter-based)</span></p>
+      <p><span class="k">Agent</span><span class="v">Edge worker + KV state + scheduled cron</span></p>
+      <p><span class="k">AI</span><span class="v">Model-agnostic · proxied</span></p>
+      <p><span class="k">Voice</span><span class="v">Speech-to-text · proxied</span></p>
+      <p><span class="k">Email</span><span class="v">Transactional provider</span></p>
+      <p style="margin-top:8px;color:var(--text3);font-size:9px;font-style:italic;font-family:'Fraunces',serif;">No provider keys touch the browser. Every upstream call passes through a secure proxy.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
