@@ -1656,6 +1656,38 @@ const SHOPIFY_CONFIG = {
   apiVersion: '2024-07',
 };
 
+// =============================================================================
+//   SHOPIFY CATEGORY INFERENCE
+//   Shopify productType is free-text and often inconsistent (blank, mistyped,
+//   or not matching our 5 canonical categories), which can leak e.g. a rifle
+//   onto the Fitness page. So we DON'T trust productType alone — we infer the
+//   canonical category from the product title + tags (reliable), and fall back
+//   to a normalized productType only when title/tags are inconclusive.
+// =============================================================================
+const CATEGORY_KEYWORDS = [
+  ['hunting',     ['rifle','firearm',' gun','shotgun','ammo','ammunition','scope','optic','binocular','crossbow','broadhead','arrow','blind','decoy','deer','hunt','camo','treestand','game call','muzzle','holster','ravin','ruger']],
+  ['fishing',     ['fishing','rod','reel','lure','tackle',' bait','hook','angler','kayak','spinning combo','baitcast']],
+  ['team-sports', ['soccer','jersey','cleat','shin guard','shinguard','baseball','basketball','football','volleyball','youth','goalkeeper','team bundle']],
+  ['fitness',     ['treadmill','dumbbell','kettlebell','barbell','weight','yoga','running','runner',' run ','cardio','fitness','workout','resistance','peloton','indoor cycle','spin bike','watch',' gps','tracker','foam roller','strength']],
+  ['camping',     ['tent','cooler','sleeping bag','sleeping','campsite',' camp ','camping','lantern','stove','hammock','backpack','hydration','headlamp','canopy']],
+];
+const PRODUCTTYPE_NORMALIZE = {
+  'hunting':'hunting','hunt':'hunting','firearms':'hunting','optics':'hunting',
+  'fishing':'fishing',
+  'team sports':'team-sports','team-sports':'team-sports','teamsports':'team-sports','sports':'team-sports',
+  'fitness':'fitness','fitness & training':'fitness','fitness and training':'fitness','training':'fitness',
+  'camping':'camping','outdoor':'camping','outdoors':'camping','camp':'camping',
+};
+function inferShopifyCategory(productType, title, tags) {
+  const hay = ` ${(title || '').toLowerCase()} ${(tags || []).join(' ').toLowerCase()} `;
+  for (const [cat, words] of CATEGORY_KEYWORDS) {
+    if (words.some(w => hay.includes(w))) return cat;
+  }
+  const raw = (productType || '').toLowerCase().trim();
+  if (PRODUCTTYPE_NORMALIZE[raw]) return PRODUCTTYPE_NORMALIZE[raw];
+  return 'general';
+}
+
 class ShopifyAdapter extends CommerceAdapter {
   constructor(config) {
     super();
@@ -1795,7 +1827,7 @@ class ShopifyAdapter extends CommerceAdapter {
     const allImages = (node.images?.edges || []).map(e => e?.node?.url).filter(Boolean);
     const photo = allImages[0] || null;
     const tags = Array.isArray(node.tags) ? node.tags : [];
-    const category = (node.productType || '').toLowerCase() || 'general';
+    const category = inferShopifyCategory(node.productType, node.title, tags);
     // Try to infer subcategory from tags (we tagged products like "footwear", "soccer", etc. in the CSV)
     const subcategoryHint = tags.find(t => ['footwear', 'soccer', 'baseball', 'basketball', 'crossbows', 'optics', 'apparel', 'shelter', 'coolers', 'rods', 'reels'].includes(t.toLowerCase()));
     return {
@@ -7103,6 +7135,123 @@ const DisruptionPanel = () => {
 /* ============================================================================
    MERCHANDISER ADMIN
    ============================================================================ */
+// =============================================================================
+//   DEMO MODE CONTROL — hidden admin toggle (lives in the admin-only Merch Tool)
+//   Flips the worker's durable demo-mode flag on/off via the authenticated admin
+//   endpoint, and shows today's AI / KV usage against the caps. The ADMIN_TOKEN
+//   is entered at runtime and kept in sessionStorage — never baked into the
+//   public bundle (so it can't be read from DevTools).
+// =============================================================================
+const DEMO_TOKEN_KEY = 'demo-admin-token';
+
+const DemoModeControl = () => {
+  const [token, setToken] = useState(() => { try { return sessionStorage.getItem(DEMO_TOKEN_KEY) || ''; } catch { return ''; } });
+  const [tokenInput, setTokenInput] = useState('');
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const base = (typeof _workerBase === 'function') ? _workerBase() : '';
+
+  const call = async (qs) => {
+    if (!base) { setError('No proxy URL configured.'); return; }
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`${base}/v1/admin/${qs}`);
+      if (res.status === 401) { setError('Invalid admin token.'); setStatus(null); return; }
+      const data = await res.json().catch(() => null);
+      if (data) setStatus(data);
+    } catch { setError('Could not reach the worker.'); }
+    finally { setLoading(false); }
+  };
+  const refresh = (tok) => { const t = tok ?? token; if (t) call(`status?token=${encodeURIComponent(t)}`); };
+  const toggle  = (mode) => { if (token) call(`demo?token=${encodeURIComponent(token)}&mode=${mode}`); };
+
+  useEffect(() => { if (token) refresh(token); /* on mount only */ }, []); // eslint-disable-line
+
+  const unlock = () => {
+    const t = tokenInput.trim(); if (!t) return;
+    try { sessionStorage.setItem(DEMO_TOKEN_KEY, t); } catch {}
+    setToken(t); setTokenInput(''); refresh(t);
+  };
+  const forget = () => {
+    try { sessionStorage.removeItem(DEMO_TOKEN_KEY); } catch {}
+    setToken(''); setStatus(null); setError(null);
+  };
+
+  const on = status?.demoMode === 'on';
+  const u = status?.usage;
+
+  return (
+    <div style={{
+      marginTop: 24, padding: '16px 18px',
+      background: T.glassSurface, border: `1px solid ${T.hairlineStrong}`,
+      borderRadius: 12, maxWidth: 620,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <Settings size={15} color={T.text2} />
+        <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>Demo Mode</span>
+        <span className="mono" style={{ fontSize: 9, color: T.text3, border: `1px solid ${T.hairline}`, borderRadius: 999, padding: '1px 7px' }}>ADMIN</span>
+        {status && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: on ? T.green : T.text3 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: on ? T.green : T.text3 }} />
+            {on ? 'ON' : 'OFF'}
+          </span>
+        )}
+      </div>
+      <p style={{ fontSize: 12, color: T.text2, margin: '0 0 12px', lineHeight: 1.5 }}>
+        Controls AI + KV usage. When off, the storefront still browses but the AI, email, and lifecycle agent are paused.
+      </p>
+
+      {!token ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="password" placeholder="Admin token" value={tokenInput}
+            onChange={e => setTokenInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') unlock(); }}
+            style={{ flex: 1, padding: '9px 12px', background: T.void, border: `1px solid ${T.hairlineStrong}`, borderRadius: 8, color: T.text, fontSize: 13 }}
+          />
+          <button onClick={unlock} style={{ padding: '9px 16px', background: T.violet, color: '#fff', border: 0, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Unlock</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => toggle(on ? 'off' : 'on')}
+              disabled={loading}
+              style={{
+                padding: '10px 18px', border: 0, borderRadius: 999, cursor: loading ? 'wait' : 'pointer',
+                fontSize: 13, fontWeight: 700, color: '#fff',
+                background: on ? T.red : T.green,
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}>
+              {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+              {on ? 'Turn demo OFF' : 'Turn demo ON'}
+            </button>
+            <button onClick={() => refresh()} disabled={loading}
+              style={{ padding: '10px 14px', background: 'transparent', border: `1px solid ${T.hairlineStrong}`, borderRadius: 999, color: T.text2, fontSize: 12, cursor: 'pointer' }}>
+              Refresh
+            </button>
+            <button onClick={forget}
+              style={{ marginLeft: 'auto', background: 'transparent', border: 0, color: T.text3, fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}>
+              Forget token
+            </button>
+          </div>
+          {u && (
+            <div className="mono" style={{ marginTop: 12, fontSize: 11, color: T.text2, lineHeight: 1.7 }}>
+              AI calls: <strong style={{ color: u.aiCalls >= u.aiCap ? T.red : T.text }}>{u.aiCalls}/{u.aiCap}</strong>
+              {'   ·   '}
+              KV writes: <strong style={{ color: u.kvWrites >= u.kvCap ? T.red : T.text }}>{u.kvWrites}/{u.kvCap}</strong>
+              <br />
+              <span style={{ color: T.text3 }}>resets {u.resetsAtUtc ? new Date(u.resetsAtUtc).toLocaleString() : 'at UTC midnight'}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {error && <div style={{ marginTop: 10, fontSize: 12, color: T.red }}>{error}</div>}
+    </div>
+  );
+};
+
 const MerchTool = () => {
   // pinnedByCategory and heroOverrides are now lifted to App context so the
   // storefront (HomePage, CategoryPage) can see them. MerchTool reads + writes
@@ -7275,6 +7424,8 @@ const MerchTool = () => {
       <p style={{ fontSize: 15, color: T.text2, maxWidth: 620, lineHeight: 1.55 }}>
         Edit homepage banners, swap commerce backends, and configure the AI assistant. All changes are live.
       </p>
+
+      <DemoModeControl />
 
       <AnimatePresence>
         {(saved || adapterSaved || llmSaved) && (
