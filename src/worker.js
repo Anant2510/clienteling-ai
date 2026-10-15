@@ -30,6 +30,7 @@
 
 const ALLOWED_ORIGINS = [
   'https://anant2510.github.io',
+  'https://cxnova2.centralindia.cloudapp.azure.com',
   'http://localhost:5173',
   'http://localhost:4173',
 ];
