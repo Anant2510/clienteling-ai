@@ -1,4 +1,11 @@
-name: Deploy to GitHub Pages
+# Builds Clienteling AI on every push to main, then:
+#   1. publishes the build to the `vm-build` branch, which the CX Nova VM mirrors
+#      (https://cxnova2.centralindia.cloudapp.azure.com/clienteling-ai/)
+#   2. deploys the same build to GitHub Pages (until that copy is retired)
+#
+# AI calls go through the Cloudflare Worker (VITE_PROXY_URL), which holds the API key.
+# No API key is ever built into the site.
+name: Build and deploy (CX Nova VM + GitHub Pages)
 
 on:
   push:
@@ -6,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # publish the vm-build branch
   pages: write
   id-token: write
 
@@ -32,20 +39,27 @@ jobs:
 
       - name: Build
         env:
-          # PROXY URL — your Cloudflare Worker (preferred). Not a secret (it's
-          # visible in the JS bundle), but stored in GitHub Variables so it's
-          # easy to update without editing source. Set this at:
-          # Settings → Secrets and variables → Actions → Variables tab → New repository variable
-          # Name: VITE_PROXY_URL  Value: https://your-worker.workers.dev
-          VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL }}
-
-          # DIRECT KEY (NOT recommended for public deploys — exposes key in bundle).
-          # Only set this if you really want the public site to bypass the proxy.
-          # Settings → Secrets and variables → Actions → Secrets tab → New repository secret
-          VITE_ANTHROPIC_KEY: ${{ secrets.VITE_ANTHROPIC_KEY }}
+          # Cloudflare Worker URL (not a secret). Override with a repo variable VITE_PROXY_URL.
+          VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL || 'https://aso-demo-proxy.anant-jadon25.workers.dev' }}
         run: npm run build
 
-      - name: Upload artifact
+      - name: Guard against shipping an API key
+        run: |
+          if grep -rqE 'sk-ant-[A-Za-z0-9_-]{20,}' dist; then
+            echo "::error::An API key ended up in the build. Remove it before deploying."; exit 1
+          fi
+
+      - name: Publish the build for the CX Nova VM (branch vm-build)
+        run: |
+          cd dist
+          git init -q
+          git checkout -q -b vm-build
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Build of ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" vm-build
+
+      - name: Upload artifact for GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
