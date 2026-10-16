@@ -962,10 +962,101 @@ RULES:
   }
 }
 
+// ----- KIT BUILDER BUDGET HELPERS -------------------------------------------
+const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Reads a budget from free text: "$500", "500$", "budget 800", "under $1,200", "$1.5k",
+// "500 dollars", "$300-$500" (uses the upper bound). Returns dollars, or null if none is given.
+const parseBudget = (text) => {
+  const t = String(text || '').toLowerCase().replace(/(\d),(\d{3})/g, '$1$2');
+  const amount = (s) => { const v = parseFloat(s); return /k$/.test(s) ? v * 1000 : v; };
+  const notUnit = '(?!\\s*(?:lbs?|pounds?|kg|years?|yrs?|yo\\b|people|persons?|kids?|players?|hunters?|miles?|mi\\b|degrees?|°|hours?|hrs?|days?|nights?|weeks?|months?|minutes?|mins?|inch|in\\b|ft\\b|feet|%|x\\b))';
+  const patterns = [
+    /\$\s*(\d+(?:\.\d+)?k?)\s*(?:-|–|to|and)\s*\$?\s*(\d+(?:\.\d+)?k?)/,
+    /\$\s*(\d+(?:\.\d+)?k?)/,
+    /(\d+(?:\.\d+)?k?)\s*(?:\$|usd\b|dollars?\b|bucks\b)/,
+    new RegExp('(?:budget|under|below|max(?:imum)?|up to|within|no more than|less than|spend(?:ing)?|cap)\\s*(?:of|is|:|around|about|roughly|at)?\\s*(\\d+(?:\\.\\d+)?k?)\\b' + notUnit),
+    new RegExp('(\\d+(?:\\.\\d+)?k?)\\b' + notUnit + '\\s*(?:total\\s*)?budget'),
+  ];
+  for (const re of patterns) {
+    const m = t.match(re);
+    if (m) { const v = amount(m[2] || m[1]); if (v > 0) return Math.round(v * 100) / 100; }
+  }
+  return null;
+};
+
+// Clean up kit items from any source: whole-number quantities, no duplicate lines.
+const normalizeKitItems = (items) => {
+  const out = []; const byId = new Map();
+  for (const it of items || []) {
+    if (!it || !it.id) continue;
+    const qty = Math.max(1, Math.min(20, Math.round(Number(it.qty) || 1)));
+    if (byId.has(it.id)) { byId.get(it.id).qty += qty; continue; }
+    const row = { id: String(it.id), qty, reason: it.reason || '', cat: it.cat || '' };
+    byId.set(row.id, row); out.push(row);
+  }
+  return out;
+};
+
+const kitTotal = (items, priceOf) => Math.round(items.reduce((s, i) => s + priceOf(i.id) * i.qty, 0) * 100) / 100;
+
+// Final guarantee that a kit fits the budget: keep items in priority order (most essential
+// first) while they fit, and report what was left out. Never invents substitutes.
+const fitKitToBudget = (items, priceOf, budget) => {
+  const kept = [], dropped = []; let total = 0;
+  for (const it of items) {
+    const line = priceOf(it.id) * it.qty;
+    if (total + line <= budget + 0.005) { kept.push(it); total += line; }
+    else dropped.push({ ...it, line });
+  }
+  return { items: kept, dropped, total: Math.round(total * 100) / 100 };
+};
+
+// Brings any kit (AI-built, scripted or generic) within the customer's budget.
+//  1. AI kits that come back over budget are sent back once with exact line totals to revise.
+//  2. Anything still over is trimmed by priority, with a note for each item left out.
+// Returns { kit, notes, total }. `revise` is called as revise({ thoughts, items, total, lines }).
+const applyKitBudget = async ({ kit, source, budget, priceOf, nameOf, revise }) => {
+  let items = normalizeKitItems(kit.items);
+  let thoughts = kit.thoughts || [];
+  const notes = [];
+  let total = kitTotal(items, priceOf);
+  if (!budget) {
+    // No budget given: don't repeat the example budget a scripted kit was written for.
+    if (source !== 'ai') thoughts = thoughts.filter(t => !/budget/i.test(t));
+    return { kit: { ...kit, thoughts, items }, notes, total };
+  }
+  if (source !== 'ai') {
+    // Scripted kits were written for one example budget: show the customer's actual budget.
+    thoughts = thoughts.map(t => /budget/i.test(t) ? t.replace(/\$\d[\d,]*(?:\.\d+)?/, money(budget)) : t);
+  }
+  if (total > budget && source === 'ai' && revise) {
+    const lines = items.map(i => `- ${i.id} ${nameOf(i.id)} × ${i.qty} @ ${money(priceOf(i.id))} = ${money(priceOf(i.id) * i.qty)}`);
+    const revised = await revise({ thoughts, items, total, lines });
+    const rItems = revised ? normalizeKitItems(revised.items) : [];
+    if (rItems.length) {
+      notes.push(`First draft came to ${money(total)}, over the ${money(budget)} budget, so the kit was re-planned.`);
+      thoughts = revised.thoughts && revised.thoughts.length ? revised.thoughts : thoughts;
+      items = rItems; total = kitTotal(items, priceOf);
+    }
+  }
+  if (total > budget) {
+    const fit = fitKitToBudget(items, priceOf, budget);
+    fit.dropped.forEach(d => notes.push(`Left out ${nameOf(d.id)}${d.qty > 1 ? ` × ${d.qty}` : ''} (${money(d.line)}): it doesn't fit the ${money(budget)} budget.`));
+    items = fit.items; total = fit.total;
+  }
+  notes.push(items.length
+    ? `Budget check: kit total ${money(total)}, within your ${money(budget)} budget.`
+    : `Nothing in our catalog for this scenario fits a ${money(budget)} budget.`);
+  return { kit: { ...kit, thoughts, items }, notes, total };
+};
+
 // ----- KIT BUILDER LLM CALL ------------------------------------------------
 // Returns { thoughts: string[], items: [{ id, qty, reason, cat }] }
 // Uses the same proxy/direct transport as callLLM but with a kit-specific prompt.
-async function callLLMForKit(scenarioText) {
+// opts.budget adds a hard budget rule; opts.revise asks the model to fix an over-budget draft.
+async function callLLMForKit(scenarioText, opts = {}) {
+  const { budget = null, revise = null } = opts;
   const catalog = await buildCatalogContext();
   const systemPrompt = `You are the AI Kit Builder for Clienteling AI. Given a scenario, you reason through the customer's needs and assemble a ready-to-cart kit from the real catalog.
 
@@ -987,7 +1078,13 @@ RULES:
 6. "cat" is a short human label like "Shelter", "Footwear", "Cooking", "Optics".
 7. If the scenario doesn't match anything in our catalog (e.g. ski equipment which we don't carry),
    still return your best general outdoor recommendations and acknowledge limits in the thoughts.
-8. Stay within budget if one is mentioned. Sum your picks' prices mentally.`;
+${budget
+  ? `8. HARD BUDGET: the customer's budget is ${money(budget)} for the whole kit. Kit total = the sum of (price × qty)
+   over all items, and it MUST be ${money(budget)} or less. Work out every line total and the kit total before you
+   answer. If the ideal picks don't fit, choose cheaper SKUs from the catalog or leave out lower-priority items.
+   Never exceed the budget.`
+  : `8. If the scenario mentions a budget, the kit total (sum of price × qty) must stay within it.`}
+9. List items in priority order, the most essential item first.`;
 
   const usingProxy = Boolean(LLM_CONFIG.proxyUrl);
   if (!LLM_CONFIG.enabled) return null;   // no LLM — caller handles fallback
@@ -1010,7 +1107,13 @@ RULES:
         model: LLM_CONFIG.model,
         max_tokens: 1500,
         system: systemPrompt,
-        messages: [{ role: 'user', content: scenarioText }],
+        messages: revise
+          ? [
+              { role: 'user', content: scenarioText },
+              { role: 'assistant', content: JSON.stringify({ thoughts: revise.thoughts, items: revise.items }) },
+              { role: 'user', content: `That kit totals ${money(revise.total)}, which is ${money(revise.total - budget)} over the ${money(budget)} budget.\nLine totals:\n${revise.lines.join('\n')}\n\nRevise the kit so the total is ${money(budget)} or less. Keep the most important items, choose cheaper SKUs from the catalog where you can, and leave out lower-priority items if needed. Reply with the complete JSON in the same shape.` },
+            ]
+          : [{ role: 'user', content: scenarioText }],
       }),
     });
     if (!response.ok) {
@@ -1035,7 +1138,7 @@ RULES:
     if (!parsed?.thoughts || !parsed?.items) return null;
     // Validate items reference real catalog IDs
     const validIds = new Set(catalog.map(p => p.id));
-    parsed.items = parsed.items.filter(it => validIds.has(it.id));
+    parsed.items = normalizeKitItems(parsed.items).filter(it => validIds.has(it.id));
     if (parsed.items.length === 0) return null;
     return parsed;
   } catch (err) {
@@ -6682,18 +6785,23 @@ const KitBuilder = () => {
       setThoughts(s => [...s, t]);
     }
 
+    const budget = parseBudget(text);
+
     // 1) Try the real LLM (uses your Cloudflare proxy if configured)
     let kitResult = null;
+    let source = 'ai';
     if (LLM_CONFIG.enabled) {
-      kitResult = await callLLMForKit(text);
+      kitResult = await callLLMForKit(text, { budget });
     }
 
     // 2) If LLM unavailable or failed, fall back to a matching script
     if (!kitResult) {
       const script = findScript(text);
       if (script) {
-        kitResult = script;
+        kitResult = { ...script, thoughts: ["The AI planner didn't respond, so this starts from our curated kit for this scenario.", ...script.thoughts] };
+        source = 'script';
       } else {
+        source = 'generic';
         // 3) Last-resort: build a generic kit from the catalog based on category guess
         const lower = text.toLowerCase();
         let guessCategory = 'camping';
@@ -6719,11 +6827,24 @@ const KitBuilder = () => {
       }
     }
 
+    // 3) Keep the kit within the customer's budget, whichever path built it
+    const catalog = await buildCatalogContext();
+    const catalogPrice = new Map(catalog.map(p => [p.id, Number(p.price) || 0]));
+    const nameOf = (id) => (catalog.find(p => p.id === id) || CATALOG.find(p => p.id === id) || {}).name || id;
+    let priceOf = (id) => catalogPrice.get(id) ?? (CATALOG.find(p => p.id === id)?.price || 0);
+    const budgeted = await applyKitBudget({
+      kit: kitResult, source, budget, priceOf, nameOf,
+      revise: (draft) => callLLMForKit(text, { budget, revise: draft }),
+    });
+    kitResult = budgeted.kit;
+    let budgetNotes = budgeted.notes;
+
     // Clear placeholder and stream the real reasoning
     setThoughts([]);
-    for (let i = 0; i < kitResult.thoughts.length; i++) {
+    const allThoughts = [...kitResult.thoughts, ...budgetNotes];
+    for (let i = 0; i < allThoughts.length; i++) {
       await new Promise(r => setTimeout(r, 500));
-      setThoughts(s => [...s, kitResult.thoughts[i]]);
+      setThoughts(s => [...s, allThoughts[i]]);
     }
     await new Promise(r => setTimeout(r, 400));
 
@@ -6732,8 +6853,17 @@ const KitBuilder = () => {
     for (const item of kitResult.items) {
       products[item.id] = await adapter.getProduct(item.id);
     }
+    // Final guard: re-check against the live prices actually shown on the page.
+    if (budget) {
+      priceOf = (id) => Number(products[id]?.price) || 0;
+      if (kitTotal(kitResult.items, priceOf) > budget) {
+        const fit = fitKitToBudget(kitResult.items, priceOf, budget);
+        kitResult = { ...kitResult, items: fit.items };
+        setThoughts(s => [...s, ...fit.dropped.map(d => `Left out ${nameOf(d.id)} (${money(d.line)}) after a live price check: it doesn't fit the ${money(budget)} budget.`)]);
+      }
+    }
     setItemProducts(products);
-    setKit(kitResult);
+    setKit({ ...kitResult, budget });
     setPhase('done');
 
     // Fetch live per-location inventory for the delivery promise (Shopify live
@@ -6904,6 +7034,13 @@ const KitBuilder = () => {
             <h2 className="display" style={{ fontSize: 38, margin: 0, color: T.text }}>Your kit</h2>
             <div style={{ fontSize: 14, color: T.text2, textAlign: 'right' }}>
               {kit.items.length} items · <span style={{ color: T.cyan, fontWeight: 700 }}>${total.toFixed(2)}</span>
+              {kit.budget ? (
+                <div style={{ fontSize: 12, fontWeight: 600, marginTop: 4, color: total <= kit.budget ? T.lime : T.red }}>
+                  {total <= kit.budget
+                    ? `✓ Within your ${money(kit.budget)} budget (${money(kit.budget - total)} to spare)`
+                    : `Over your ${money(kit.budget)} budget`}
+                </div>
+              ) : null}
               {Object.keys(itemStock).length > 0 && (
                 <div style={{ fontSize: 11, fontFamily: T.mono, color: T.text3, marginTop: 4 }}>
                   <MapPin size={10} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
@@ -6959,7 +7096,13 @@ const KitBuilder = () => {
               </motion.div>
             );
           })}
-          <button onClick={addAll} style={{
+          {kit.items.length === 0 && (
+            <div style={{ padding: 24, borderRadius: 12, background: T.ink2, border: `1px solid ${T.hairline}`, color: T.text2, lineHeight: 1.55 }}>
+              Nothing in our catalog for this scenario fits {kit.budget ? `a ${money(kit.budget)} budget` : 'this request'}.
+              Try a higher budget, fewer people, or a narrower scenario.
+            </div>
+          )}
+          {kit.items.length > 0 && <button onClick={addAll} style={{
             marginTop: 24, width: '100%',
             background: T.gradHero, color: 'white',
             border: 0, padding: '20px 28px',
@@ -6974,7 +7117,7 @@ const KitBuilder = () => {
           onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 8px 32px ${T.violet}55, 0 0 60px ${T.pink}33, inset 0 1px 0 rgba(255,255,255,0.25)`; e.currentTarget.style.transform = 'translateY(0)'; }}
           >
             ADD FULL KIT TO CART — ${total.toFixed(2)} <ArrowRight size={16} />
-          </button>
+          </button>}
         </motion.div>
       )}
     </div>
